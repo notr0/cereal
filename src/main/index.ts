@@ -69,6 +69,8 @@ function createWindow(showOnReady: boolean): BrowserWindow {
 }
 
 function showWindow(): void {
+  // While quitting, a reopened window would be closed again before anything done in it is saved.
+  if (finishing) return
   if (!win) win = createWindow(true)
   if (win.isMinimized()) win.restore()
   win.show()
@@ -99,6 +101,7 @@ function finishThenQuit(w: BrowserWindow): void {
 }
 
 function sendCommand(command: TrayCommand): void {
+  if (finishing) return
   if (command === 'new-note') showWindow()
   win?.webContents.send('app:command', command)
 }
@@ -157,7 +160,11 @@ function registerIpc(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => showWindow())
+  app.on('second-instance', () => {
+    // Launched again while the last quit is still saving: start fresh once this one exits.
+    if (finishing) app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--hidden') })
+    else showWindow()
+  })
 
   app.whenReady().then(async () => {
     // System audio ("Them" in the transcript) is captured as Windows loopback audio through getDisplayMedia.
