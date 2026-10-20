@@ -39,7 +39,7 @@ ${template.instructions}
 Skip any section that would be empty.`
 
   const myNotes = htmlToText(note.myNotes)
-  const transcript = transcriptText(note.transcript, userName, budgetChars(numCtx, 3500) - myNotes.length)
+  const transcript = transcriptText(note.transcript, userName, Math.max(1000, budgetChars(numCtx, 3500) - myNotes.length))
   const user = `Meeting title: ${note.title || 'Untitled'}
 Date: ${today(note.createdAt)}
 
@@ -83,8 +83,12 @@ ${transcript || '(no transcript)'}
 </transcript>`
 }
 
+// Claude rejects empty messages, which a stopped or failed answer can leave behind.
 const history = (msgs: ChatMessage[]): LlmMessage[] =>
-  msgs.slice(-12).map((m) => ({ role: m.role, content: m.content }))
+  msgs
+    .filter((m) => m.content.trim())
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: m.content }))
 
 export function noteChatMessages(note: Note, past: ChatMessage[], question: string, userName: string, numCtx: number): LlmMessage[] {
   return [

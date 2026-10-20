@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { CalendarClock, FileText, FolderInput, ListTodo, Plus, Trash2 } from 'lucide-react'
 import type { Note } from '../../../shared/types'
-import { useSession } from '../lib/session'
+import { getSession, stopRecording, useSession } from '../lib/session'
 import { deleteNote, navigate, saveChat, updateNote, useStore } from '../lib/state'
-import { dayLabel, duration, timeParts, uid } from '../lib/util'
+import { dayLabel, timeParts, uid } from '../lib/util'
 import { Bars, Topbar, useMenu } from './Common'
-import { AskBar } from './Dock'
+import { AskBar, Timer } from './Dock'
 
 export function NewNoteButton({ onNew }: { onNew: () => void }): ReactNode {
   return (
@@ -44,7 +44,15 @@ function NoteRow({ note, onMenu }: { note: Note; onMenu: (e: React.MouseEvent, n
       <span className="icon">{recording ? <Bars live /> : <FileText size={15} />}</span>
       <span style={{ minWidth: 0 }}>
         <div className={`title ${note.title ? '' : 'untitled'}`}>{note.title || 'Untitled note'}</div>
-        <div className="sub">{recording ? `Transcribing · ${duration(note.recordedMs)}` : sub}</div>
+        <div className="sub">
+          {recording ? (
+            <>
+              Transcribing · <Timer />
+            </>
+          ) : (
+            sub
+          )}
+        </div>
       </span>
       <span className="time">
         {time}
@@ -84,7 +92,16 @@ export function NoteList({ notes, emptyHint }: { notes: Note[]; emptyHint: strin
         onSelect: () => updateNote(n.id, { folderId: f.id })
       })),
       'sep' as const,
-      { label: 'Delete note', danger: true, icon: <Trash2 size={14} />, onSelect: () => deleteNote(n.id) }
+      {
+        label: 'Delete note',
+        danger: true,
+        icon: <Trash2 size={14} />,
+        onSelect: () => {
+          // Otherwise the mic keeps transcribing a note that no longer exists.
+          if (getSession().noteId === n.id) void stopRecording()
+          deleteNote(n.id)
+        }
+      }
     ])
   }
   return (

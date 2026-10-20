@@ -43,6 +43,8 @@ export const getSession = (): SessionState => snap
 export const clearSessionError = (): void => set({ error: null })
 
 let recorder: Recorder | null = null
+/** The recorder whose mic is still opening; cleared when it starts or is cancelled. */
+let starting: Recorder | null = null
 transcriber.onStatus = (sttStatus) => set({ sttStatus })
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
@@ -107,13 +109,22 @@ export async function startRecording(noteId: string): Promise<void> {
   const settings = getState().settings
   set({ noteId, status: 'starting', error: null, baseMs: note.recordedMs })
   const rec = new Recorder((speaker, audio) => void onSegment(noteId, speaker, audio))
+  starting = rec
   try {
     const { system } = await rec.start({ micDeviceId: settings.micDeviceId, system: settings.captureSystemAudio })
+    if (starting !== rec) {
+      // Stopped, or another note started, while the mic was still opening.
+      await rec.stop()
+      return
+    }
+    starting = null
     recorder = rec
     set({ status: 'recording', since: Date.now(), system })
     transcriber.warmup()
   } catch (e) {
     await rec.stop().catch(() => undefined)
+    if (starting !== rec) return
+    starting = null
     set({ status: 'idle', noteId: null, error: `Couldn't start recording: ${message(e)}` })
   }
 }
@@ -137,6 +148,7 @@ export async function stopRecording(): Promise<void> {
   const ms = elapsedMs()
   const rec = recorder
   recorder = null
+  starting = null
   set({ status: 'idle', noteId: null, since: 0 })
   if (rec) await rec.stop()
   if (id && getNote(id)) updateNote(id, { recordedMs: ms })

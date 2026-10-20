@@ -44,6 +44,8 @@ export function NoteView({ id, onNew }: { id: string; onNew: () => void }): Reac
   const [answer, setAnswer] = useState<string | null>(null)
   const [chatError, setChatError] = useState<string | null>(null)
   const abortGen = useRef<(() => void) | null>(null)
+  /** Bumped by each generate and by Stop, so a stopped run knows to drop its result. */
+  const genRun = useRef(0)
   const editorRef = useRef<TiptapEditor | null>(null)
   const onEditor = useCallback((e: TiptapEditor) => {
     editorRef.current = e
@@ -68,10 +70,17 @@ export function NoteView({ id, onNew }: { id: string; onNew: () => void }): Reac
     setError(null)
     setPanel(null)
     if (getSession().noteId === id) await stopRecording()
+    const run = ++genRun.current
+    const stopped = (): boolean => genRun.current !== run
     setGen('')
+    abortGen.current = () => {
+      genRun.current++
+      abortGen.current = null
+      setGen(null)
+    }
     await whenTranscribed()
     const current = getNote(id)
-    if (!current) return
+    if (!current || stopped()) return
     const { settings } = getState()
     updateNote(id, { templateId })
     const s = stream(
@@ -82,9 +91,14 @@ export function NoteView({ id, onNew }: { id: string; onNew: () => void }): Reac
       },
       setGen
     )
-    abortGen.current = s.abort
+    abortGen.current = () => {
+      genRun.current++
+      s.abort()
+    }
     try {
       const md = await s.promise
+      // Stopping keeps the notes as they were rather than saving a half-written version.
+      if (stopped()) return
       if (!md.trim()) throw new Error('The model returned an empty response.')
       updateNote(id, { enhanced: enhancedHtml(md, htmlToText(current.myNotes)), view: 'enhanced' })
       setEditorKey((k) => k + 1)
@@ -95,10 +109,13 @@ export function NoteView({ id, onNew }: { id: string; onNew: () => void }): Reac
         if (title) updateNote(id, (n) => (n.title.trim() ? {} : { title }))
       }
     } catch (e) {
-      setError(`Couldn't generate notes: ${e instanceof Error ? e.message : String(e)}`)
+      if (!stopped()) setError(`Couldn't generate notes: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
-      abortGen.current = null
-      setGen(null)
+      // Leave the UI alone if a newer generate has already taken over.
+      if (genRun.current <= run + 1) {
+        abortGen.current = null
+        setGen(null)
+      }
     }
   }
 

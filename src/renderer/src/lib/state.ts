@@ -152,7 +152,8 @@ export function updateNote(id: string, patch: Partial<Note> | ((n: Note) => Part
 }
 
 export function deleteNote(id: string): void {
-  savers.get(id)?.flush()
+  // Drop any pending save: flushing it here would race the delete and bring the note back.
+  savers.get(id)?.cancel()
   savers.delete(id)
   setState((s) => ({
     notes: s.notes.filter((n) => n.id !== id),

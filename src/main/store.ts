@@ -20,7 +20,23 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeJson(file: string, data: unknown): Promise<void> {
+// Writes and deletes of one file run in order, so two saves can't share the .tmp file
+// and a delete can't land before a save that was sent ahead of it.
+const queues = new Map<string, Promise<unknown>>()
+function serial<T>(file: string, job: () => Promise<T>): Promise<T> {
+  const run = (queues.get(file) ?? Promise.resolve()).then(job, job)
+  const tail = run.catch(() => undefined)
+  queues.set(file, tail)
+  void tail.then(() => {
+    if (queues.get(file) === tail) queues.delete(file)
+  })
+  return run
+}
+
+const writeJson = (file: string, data: unknown): Promise<void> => serial(file, () => writeNow(file, data))
+const removeFile = (file: string): Promise<void> => serial(file, () => fs.rm(file, { force: true }))
+
+async function writeNow(file: string, data: unknown): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true })
   const tmp = `${file}.tmp`
   await fs.writeFile(tmp, JSON.stringify(data, null, 2))
@@ -72,10 +88,10 @@ interface AppState {
 export const store = {
   listNotes: () => listDir<Note>('notes'),
   saveNote: (n: Note) => writeJson(fileFor('notes', n.id), n),
-  deleteNote: (id: string) => fs.rm(fileFor('notes', id), { force: true }),
+  deleteNote: (id: string) => removeFile(fileFor('notes', id)),
   listChats: () => listDir<Chat>('chats'),
   saveChat: (c: Chat) => writeJson(fileFor('chats', c.id), c),
-  deleteChat: (id: string) => fs.rm(fileFor('chats', id), { force: true }),
+  deleteChat: (id: string) => removeFile(fileFor('chats', id)),
   getFolders: () => readJson<Folder[]>(join(root(), 'folders.json'), []),
   saveFolders: (f: Folder[]) => writeJson(join(root(), 'folders.json'), f),
   async getSettings(): Promise<Settings> {
