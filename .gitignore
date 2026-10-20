@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+# Copied from onnxruntime-web on every dev/build (scripts/copy-ort.mjs)
+src/renderer/public/ort/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
