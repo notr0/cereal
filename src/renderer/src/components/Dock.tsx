@@ -63,7 +63,7 @@ export function AskBar({
   )
 }
 
-function Timer(): ReactNode {
+export function Timer(): ReactNode {
   const [, tick] = useState(0)
   useEffect(() => {
     const i = setInterval(() => tick((n) => n + 1), 500)

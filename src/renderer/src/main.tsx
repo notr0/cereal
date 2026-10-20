@@ -7,6 +7,7 @@ import '@fontsource/ibm-plex-serif/600.css'
 import '@fontsource-variable/jetbrains-mono'
 import './styles.css'
 import { App } from './App'
+import { finishBeforeQuit } from './lib/session'
 import { init } from './lib/state'
 
 createRoot(document.getElementById('root') as HTMLElement).render(
@@ -16,3 +17,4 @@ createRoot(document.getElementById('root') as HTMLElement).render(
 )
 
 void init()
+window.cereal.app.onPrepareQuit(finishBeforeQuit)

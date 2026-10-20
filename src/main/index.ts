@@ -15,7 +15,13 @@ const OVERLAY = {
 let win: BrowserWindow | null = null
 let tray: CerealTray | null = null
 let quitting = false
+/** Set while the UI wraps up before exit (see finishThenQuit). */
+let finishing = false
+let readyToQuit = false
 let closeToTray = true
+
+// Long enough to transcribe the last few utterances on CPU, short enough that Quit never hangs.
+const FINISH_TIMEOUT_MS = 20_000
 
 function createWindow(showOnReady: boolean): BrowserWindow {
   const w = new BrowserWindow({
@@ -40,10 +46,15 @@ function createWindow(showOnReady: boolean): BrowserWindow {
   })
   if (showOnReady) w.once('ready-to-show', () => w.show())
   w.on('close', (e) => {
-    if (quitting || !closeToTray) return
+    if (quitting) return
     e.preventDefault()
-    w.hide()
-    void showTrayHintOnce()
+    if (closeToTray) {
+      w.hide()
+      void showTrayHintOnce()
+    } else {
+      // Quit through before-quit so a recording is finished and saved first.
+      app.quit()
+    }
   })
   w.on('closed', () => {
     if (win === w) win = null
@@ -58,13 +69,39 @@ function createWindow(showOnReady: boolean): BrowserWindow {
 }
 
 function showWindow(): void {
+  // While quitting, a reopened window would be closed again before anything done in it is saved.
+  if (finishing) return
   if (!win) win = createWindow(true)
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
 }
 
+/**
+ * Asks the UI to stop recording, transcribe what's still queued and write everything to disk,
+ * then quits for real. Without this, quitting mid-meeting dropped the last unsaved edits and audio.
+ */
+function finishThenQuit(w: BrowserWindow): void {
+  if (finishing) return
+  finishing = true
+  w.hide()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const done = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, FINISH_TIMEOUT_MS)
+    ipcMain.once('app:readyToQuit', () => resolve())
+    // A renderer that dies mid-way will never answer.
+    w.webContents.once('render-process-gone', () => resolve())
+  })
+  w.webContents.send('app:prepareQuit')
+  void done.then(() => {
+    clearTimeout(timer)
+    readyToQuit = true
+    app.quit()
+  })
+}
+
 function sendCommand(command: TrayCommand): void {
+  if (finishing) return
   if (command === 'new-note') showWindow()
   win?.webContents.send('app:command', command)
 }
@@ -123,7 +160,11 @@ function registerIpc(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => showWindow())
+  app.on('second-instance', () => {
+    // Launched again while the last quit is still saving: start fresh once this one exits.
+    if (finishing) app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--hidden') })
+    else showWindow()
+  })
 
   app.whenReady().then(async () => {
     // System audio ("Them" in the transcript) is captured as Windows loopback audio through getDisplayMedia.
@@ -145,7 +186,16 @@ if (!app.requestSingleInstanceLock()) {
     win = createWindow(!process.argv.includes('--hidden'))
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (e) => {
+    const w = win
+    // A page that hasn't loaded yet has nothing to save and no listener to answer.
+    const canFinish =
+      !!w && !w.isDestroyed() && !w.webContents.isDestroyed() && !w.webContents.isCrashed() && !w.webContents.isLoadingMainFrame()
+    if (!readyToQuit && w && canFinish) {
+      e.preventDefault()
+      finishThenQuit(w)
+      return
+    }
     quitting = true
   })
 

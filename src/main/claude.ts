@@ -69,9 +69,10 @@ export function claudeErrorMessage(e: unknown): string {
   if (e instanceof Anthropic.BadRequestError) return `Claude rejected the request: ${e.message}`
   if (e instanceof Anthropic.APIConnectionError) return "Couldn't reach the Claude API. Check your internet connection."
   if (e instanceof Anthropic.APIError) return `Claude API error ${e.status ?? ''}: ${e.message}`
+  const msg = e instanceof Error ? e.message : String(e)
   // Without a saved key the SDK fails before any request when it finds no other credentials.
-  if (!usingSavedKey) return 'No Claude API key yet. Add one in Settings.'
-  return e instanceof Error ? e.message : String(e)
+  if (!usingSavedKey && /resolve authentication/i.test(msg)) return 'No Claude API key yet. Add one in Settings.'
+  return msg
 }
 
 export async function claudeStatus(model: string): Promise<LlmStatus> {

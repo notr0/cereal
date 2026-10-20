@@ -54,6 +54,15 @@ class Transcriber {
         if (m.id === undefined) this.onStatus(`Speech model error: ${m.error}`)
       }
     }
+    // A crashed worker never answers; fail what's waiting and start a fresh one next time.
+    w.onerror = (e) => {
+      e.preventDefault()
+      const err = new Error(e.message || 'The speech model stopped unexpectedly.')
+      this.pending.forEach((p) => p.reject(err))
+      this.pending.clear()
+      w.terminate()
+      if (this.worker === w) this.worker = null
+    }
     this.worker = w
     return w
   }

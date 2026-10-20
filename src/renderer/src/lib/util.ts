@@ -76,7 +76,10 @@ export function jaccard(a: string, b: string): number {
   return inter / (A.size + B.size - inter)
 }
 
-export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number): ((...a: A) => void) & { flush: () => void } {
+export function debounce<A extends unknown[]>(
+  fn: (...a: A) => void,
+  ms: number
+): ((...a: A) => void) & { flush: () => void; cancel: () => void } {
   let t: ReturnType<typeof setTimeout> | null = null
   let last: A | null = null
   const run = (...a: A): void => {
@@ -93,6 +96,10 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
       t = null
       fn(...(last as A))
     }
+  }
+  run.cancel = (): void => {
+    if (t) clearTimeout(t)
+    t = null
   }
   return run
 }
