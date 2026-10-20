@@ -1,6 +1,7 @@
-import { app, Menu, Tray, type MenuItemConstructorOptions } from 'electron'
+import { app, Tray } from 'electron'
 import { join } from 'node:path'
 import type { TrayCommand, TraySession } from '../shared/types'
+import { TrayMenu, type TrayMenuItem } from './trayMenu'
 
 const iconPath = (name: string): string =>
   app.isPackaged ? join(process.resourcesPath, 'tray', name) : join(app.getAppPath(), 'build', 'tray', name)
@@ -19,6 +20,7 @@ export function setOpenAtLogin(on: boolean): void {
 
 export class CerealTray {
   private tray: Tray
+  private menu = new TrayMenu()
   private session: TraySession = { status: 'idle', title: '' }
 
   constructor(
@@ -27,7 +29,11 @@ export class CerealTray {
     private readonly quit: () => void
   ) {
     this.tray = new Tray(iconPath('tray.ico'))
-    this.tray.on('click', () => this.show())
+    this.tray.on('click', () => {
+      this.menu.close()
+      this.show()
+    })
+    this.tray.on('right-click', () => this.menu.popUp())
     this.render()
   }
 
@@ -57,7 +63,7 @@ export class CerealTray {
     this.tray.setImage(iconPath(live ? 'tray-recording.ico' : 'tray.ico'))
     this.tray.setToolTip(live ? `Cereal · ${what}${title ? `: ${title.slice(0, 60)}` : ''}` : 'Cereal')
 
-    const items: MenuItemConstructorOptions[] = [{ label: 'Open Cereal', click: () => this.show() }]
+    const items: TrayMenuItem[] = [{ label: 'Open Cereal', click: () => this.show() }]
     if (live) {
       items.push(
         { label: status === 'paused' ? 'Resume transcribing' : 'Pause transcribing', click: () => this.command('toggle-pause') },
@@ -73,11 +79,14 @@ export class CerealTray {
         type: 'checkbox',
         checked: openAtLogin(),
         enabled: app.isPackaged,
-        click: (item) => setOpenAtLogin(item.checked)
+        click: (checked) => {
+          setOpenAtLogin(checked)
+          this.render()
+        }
       },
       { type: 'separator' },
       { label: 'Quit Cereal', click: () => this.quit() }
     )
-    this.tray.setContextMenu(Menu.buildFromTemplate(items))
+    this.menu.setItems(items)
   }
 }
