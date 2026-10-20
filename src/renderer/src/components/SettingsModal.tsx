@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { CLAUDE_MODELS } from '../../../shared/models'
-import type { ClaudeKeyInfo, LlmProvider, Settings, SttProvider } from '../../../shared/types'
+import type { AppInfo, ClaudeKeyInfo, LlmProvider, Settings, SttProvider } from '../../../shared/types'
 import { refreshLlm, setState, updateSettings, useStore } from '../lib/state'
 import { Segmented, Toggle } from './Common'
 
@@ -185,6 +185,26 @@ function OllamaSettings(): ReactNode {
   )
 }
 
+function LoginToggle(): ReactNode {
+  const [info, setInfo] = useState<AppInfo | null>(null)
+  useEffect(() => void window.cereal.app.info().then(setInfo), [])
+  if (!info) return null
+  return (
+    <div className="field">
+      <label>Open at login</label>
+      <span style={info.packaged ? undefined : { opacity: 0.45, pointerEvents: 'none' }}>
+        <Toggle
+          on={info.openAtLogin}
+          onChange={(on) => void window.cereal.app.setOpenAtLogin(on).then((openAtLogin) => setInfo({ ...info, openAtLogin }))}
+        />
+      </span>
+      <div className="help">
+        {info.packaged ? 'Starts Cereal in the tray when you sign in to Windows.' : 'Available in the installed app (npm run dist).'}
+      </div>
+    </div>
+  )
+}
+
 export function SettingsModal(): ReactNode {
   const s = useStore((st) => st.settings)
   const [mics, setMics] = useState<MediaDeviceInfo[]>([])
@@ -228,6 +248,12 @@ export function SettingsModal(): ReactNode {
               <Text k="userName" placeholder="Me" />
               <div className="help">Used for your side of the transcript.</div>
             </div>
+            <div className="field">
+              <label>Keep running in tray</label>
+              <Toggle on={s.closeToTray} onChange={(closeToTray) => void updateSettings({ closeToTray })} />
+              <div className="help">Closing the window keeps Cereal (and any transcription) running in the system tray.</div>
+            </div>
+            <LoginToggle />
           </section>
 
           <section className="settings-section">

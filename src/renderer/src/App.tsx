@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { PanelLeft } from 'lucide-react'
-import { startRecording } from './lib/session'
+import { getSession, pauseRecording, resumeRecording, startRecording, stopRecording, useSession } from './lib/session'
 import { createNote, getState, setState, useStore } from './lib/state'
 import { ChatList, ChatView } from './components/ChatView'
 import { FolderView, Home } from './components/Home'
@@ -14,6 +14,27 @@ function newNote(): void {
   const { route } = getState()
   const note = createNote(route.name === 'folder' ? route.id : null)
   void startRecording(note.id)
+}
+
+/** Keeps the tray icon in sync with recording and carries out tray menu commands. */
+function TrayBridge(): ReactNode {
+  const session = useSession()
+  const title = useStore((s) => (session.noteId ? (s.notes.find((n) => n.id === session.noteId)?.title ?? '') : ''))
+
+  useEffect(() => {
+    window.cereal.app.reportSession({ status: session.status, title: session.noteId ? title || 'Untitled note' : '' })
+  }, [session.status, session.noteId, title])
+
+  useEffect(
+    () =>
+      window.cereal.app.onCommand((command) => {
+        if (command === 'new-note') newNote()
+        else if (command === 'stop-recording') void stopRecording()
+        else void (getSession().status === 'paused' ? resumeRecording() : pauseRecording())
+      }),
+    []
+  )
+  return null
 }
 
 export function App(): ReactNode {
@@ -66,6 +87,7 @@ export function App(): ReactNode {
 
   return (
     <div className={`app platform-${window.cereal.platform}`}>
+      <TrayBridge />
       <button
         className="icon-btn sidebar-toggle no-drag"
         title="Toggle sidebar (Ctrl+\)"

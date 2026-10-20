@@ -1,5 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Chat, ClaudeKeyInfo, Folder, LlmEvent, LlmRequest, LlmStatus, Note, Settings } from '../shared/types'
+import type {
+  AppInfo,
+  Chat,
+  ClaudeKeyInfo,
+  Folder,
+  LlmEvent,
+  LlmRequest,
+  LlmStatus,
+  Note,
+  Settings,
+  TrayCommand,
+  TraySession
+} from '../shared/types'
 
 const api = {
   platform: process.platform,
@@ -41,6 +53,16 @@ const api = {
   },
   window: {
     setTheme: (dark: boolean): void => ipcRenderer.send('window:theme', dark)
+  },
+  app: {
+    info: (): Promise<AppInfo> => ipcRenderer.invoke('app:info'),
+    setOpenAtLogin: (on: boolean): Promise<boolean> => ipcRenderer.invoke('app:setOpenAtLogin', on),
+    reportSession: (s: TraySession): void => ipcRenderer.send('app:session', s),
+    onCommand(cb: (command: TrayCommand) => void): () => void {
+      const handler = (_e: unknown, command: TrayCommand): void => cb(command)
+      ipcRenderer.on('app:command', handler)
+      return () => ipcRenderer.removeListener('app:command', handler)
+    }
   },
   openExternal: (url: string): void => ipcRenderer.send('app:openExternal', url)
 }

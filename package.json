@@ -26,6 +26,12 @@
     "files": [
       "out/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "build/tray",
+        "to": "tray"
+      }
+    ],
     "win": {
       "target": "dir",
       "icon": "build/icon.ico"

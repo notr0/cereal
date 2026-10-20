@@ -15,6 +15,9 @@ floating "Ask anything" bar). All code is original; no Granola code, assets or f
   AI additions are gray.
 - **Ask anything** about one meeting or across all of them.
 - **Spaces** to organize notes, Ctrl+K search, light and dark themes.
+- **Runs in the tray** like Granola: closing the window keeps Cereal (and any transcription) running.
+  Click the tray icon to reopen it; right-click for New note, Pause/Stop transcribing, Open at login
+  and Quit. The icon shows a red dot while transcribing.
 
 ## AI providers
 

@@ -1,6 +1,6 @@
-// Renders build/icon.svg (and icon-small.svg for tiny sizes) into build/icon.ico and build/icon.png.
-// Run with `npm run icon` after editing the SVGs.
-import { readFileSync, writeFileSync } from 'node:fs'
+// Renders build/icon.svg (and icon-small.svg for tiny sizes) into build/icon.ico, build/icon.png
+// and the tray icons in build/tray/. Run with `npm run icon` after editing the SVGs.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Resvg } from '@resvg/resvg-js'
@@ -8,6 +8,12 @@ import { Resvg } from '@resvg/resvg-js'
 const build = join(dirname(fileURLToPath(import.meta.url)), '..', 'build')
 const large = readFileSync(join(build, 'icon.svg'), 'utf8')
 const small = readFileSync(join(build, 'icon-small.svg'), 'utf8')
+
+// Recording badge for the tray: a red dot in the bottom-right corner.
+const badge = (svg, cx, r, ring) =>
+  svg.replace('</svg>', `<circle cx="${cx}" cy="${cx}" r="${r}" fill="#e95d3d" stroke="#292929" stroke-width="${ring}"/></svg>`)
+const largeRecording = badge(large, 196, 46, 16)
+const smallRecording = badge(small, 194, 54, 20)
 
 const rasterize = (svg, size) => new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render()
 const render = (svg, size) => rasterize(svg, size).asPng()
@@ -36,32 +42,37 @@ function bmpEntry(svg, size) {
   return out // AND mask stays zero; transparency comes from alpha
 }
 
-const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
-const images = sizes.map((size) => {
-  const svg = size <= 24 ? small : large
-  return { size, png: size >= 256 ? render(svg, size) : bmpEntry(svg, size) }
-})
+/** ICO container: bitmap entries below 256 px, PNG for 256 px. */
+function ico(sizes, largeSvg, smallSvg) {
+  const images = sizes.map((size) => {
+    const svg = size <= 24 ? smallSvg : largeSvg
+    return { size, data: size >= 256 ? render(svg, size) : bmpEntry(svg, size) }
+  })
+  const header = Buffer.alloc(6)
+  header.writeUInt16LE(0, 0)
+  header.writeUInt16LE(1, 2)
+  header.writeUInt16LE(images.length, 4)
+  const dir = Buffer.alloc(16 * images.length)
+  let offset = 6 + dir.length
+  images.forEach(({ size, data }, i) => {
+    const o = i * 16
+    dir.writeUInt8(size >= 256 ? 0 : size, o)
+    dir.writeUInt8(size >= 256 ? 0 : size, o + 1)
+    dir.writeUInt16LE(1, o + 4)
+    dir.writeUInt16LE(32, o + 6)
+    dir.writeUInt32LE(data.length, o + 8)
+    dir.writeUInt32LE(offset, o + 12)
+    offset += data.length
+  })
+  return Buffer.concat([header, dir, ...images.map((x) => x.data)])
+}
 
-// ICO container: bitmap entries below 256 px, PNG for 256 px.
-const header = Buffer.alloc(6)
-header.writeUInt16LE(0, 0)
-header.writeUInt16LE(1, 2)
-header.writeUInt16LE(images.length, 4)
-const dir = Buffer.alloc(16 * images.length)
-let offset = 6 + dir.length
-images.forEach(({ size, png }, i) => {
-  const o = i * 16
-  dir.writeUInt8(size >= 256 ? 0 : size, o)
-  dir.writeUInt8(size >= 256 ? 0 : size, o + 1)
-  dir.writeUInt8(0, o + 2)
-  dir.writeUInt8(0, o + 3)
-  dir.writeUInt16LE(1, o + 4)
-  dir.writeUInt16LE(32, o + 6)
-  dir.writeUInt32LE(png.length, o + 8)
-  dir.writeUInt32LE(offset, o + 12)
-  offset += png.length
-})
-
-writeFileSync(join(build, 'icon.ico'), Buffer.concat([header, dir, ...images.map((x) => x.png)]))
+writeFileSync(join(build, 'icon.ico'), ico([16, 20, 24, 32, 40, 48, 64, 96, 128, 256], large, small))
 writeFileSync(join(build, 'icon.png'), render(large, 512))
-console.log(`icon.ico (${sizes.join(', ')} px) and icon.png (512 px) written to ${build}`)
+
+const traySizes = [16, 20, 24, 32, 40, 48]
+mkdirSync(join(build, 'tray'), { recursive: true })
+writeFileSync(join(build, 'tray', 'tray.ico'), ico(traySizes, large, small))
+writeFileSync(join(build, 'tray', 'tray-recording.ico'), ico(traySizes, largeRecording, smallRecording))
+
+console.log(`icon.ico, icon.png and tray/*.ico written to ${build}`)

@@ -65,6 +65,22 @@ export interface Settings {
   openaiSttModel: string
   micDeviceId: string
   captureSystemAudio: boolean
+  /** Closing the window keeps Cereal running in the system tray. */
+  closeToTray: boolean
+}
+
+/** Sent from the tray menu to the UI. */
+export type TrayCommand = 'new-note' | 'stop-recording' | 'toggle-pause'
+
+/** Recording state the UI reports so the tray can show it. */
+export interface TraySession {
+  status: 'idle' | 'starting' | 'recording' | 'paused'
+  title: string
+}
+
+export interface AppInfo {
+  packaged: boolean
+  openAtLogin: boolean
 }
 
 export interface LlmMessage {

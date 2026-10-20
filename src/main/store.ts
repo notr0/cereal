@@ -59,8 +59,14 @@ export function defaultSettings(): Settings {
     openaiSttUrl: 'http://127.0.0.1:8000/v1',
     openaiSttModel: 'whisper-1',
     micDeviceId: '',
-    captureSystemAudio: true
+    captureSystemAudio: true,
+    closeToTray: true
   }
+}
+
+/** Main-process bookkeeping that the renderer never writes (so it can't be overwritten by a settings save). */
+interface AppState {
+  trayHintShown?: boolean
 }
 
 export const store = {
@@ -75,7 +81,9 @@ export const store = {
   async getSettings(): Promise<Settings> {
     return { ...defaultSettings(), ...(await readJson<Partial<Settings>>(join(root(), 'settings.json'), {})) }
   },
-  saveSettings: (s: Settings) => writeJson(join(root(), 'settings.json'), s)
+  saveSettings: (s: Settings) => writeJson(join(root(), 'settings.json'), s),
+  getAppState: () => readJson<AppState>(join(root(), 'app-state.json'), {}),
+  saveAppState: (s: AppState) => writeJson(join(root(), 'app-state.json'), s)
 }
 
 /** The model Odysseus uses by default, so Cereal matches it out of the box. */
