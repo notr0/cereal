@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Speaker, TranscriptEntry } from '../../../shared/types'
 import { Recorder } from './recorder'
-import { getNote, getState, updateNote } from './state'
+import { flushSaves, getNote, getState, updateNote } from './state'
 import { cleanTranscript, transcriber } from './transcriber'
 import { jaccard, uid } from './util'
 
@@ -152,4 +152,11 @@ export async function stopRecording(): Promise<void> {
   set({ status: 'idle', noteId: null, since: 0 })
   if (rec) await rec.stop()
   if (id && getNote(id)) updateNote(id, { recordedMs: ms })
+}
+
+/** Before Cereal exits: stop the mic, transcribe what was already heard, and save everything. */
+export async function finishBeforeQuit(): Promise<void> {
+  if (snap.noteId) await stopRecording()
+  await whenTranscribed(15_000)
+  await flushSaves()
 }

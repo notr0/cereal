@@ -106,16 +106,29 @@ export const contextTokens = (s: Settings): number => (s.llmProvider === 'claude
 
 // ── notes ──
 
+/** Disk writes still on their way to the main process, so quitting can wait for them. */
+const inflight = new Set<Promise<void>>()
+function track(p: Promise<void>): void {
+  const t: Promise<void> = p.catch((e) => console.error('Save failed', e)).finally(() => inflight.delete(t))
+  inflight.add(t)
+}
+
 const savers = new Map<string, ReturnType<typeof debounce<[Note]>>>()
 function scheduleSave(note: Note): void {
   let s = savers.get(note.id)
   if (!s) {
-    s = debounce((n: Note) => void window.cereal.notes.save(n), 400)
+    s = debounce((n: Note) => track(window.cereal.notes.save(n)), 400)
     savers.set(note.id, s)
   }
   s(note)
 }
 window.addEventListener('beforeunload', () => savers.forEach((s) => s.flush()))
+
+/** Writes every pending note save now and resolves once all saves have reached disk. */
+export async function flushSaves(): Promise<void> {
+  savers.forEach((s) => s.flush())
+  while (inflight.size) await Promise.all(inflight)
+}
 
 export function createNote(folderId: string | null = null): Note {
   const now = Date.now()
@@ -134,7 +147,7 @@ export function createNote(folderId: string | null = null): Note {
     chat: []
   }
   setState((s) => ({ notes: [note, ...s.notes] }))
-  void window.cereal.notes.save(note)
+  track(window.cereal.notes.save(note))
   navigate({ name: 'note', id: note.id })
   return note
 }
@@ -159,7 +172,7 @@ export function deleteNote(id: string): void {
     notes: s.notes.filter((n) => n.id !== id),
     route: s.route.name === 'note' && s.route.id === id ? { name: 'home' } : s.route
   }))
-  void window.cereal.notes.remove(id)
+  track(window.cereal.notes.remove(id))
 }
 
 export const getNote = (id: string): Note | undefined => state.notes.find((n) => n.id === id)
@@ -168,7 +181,7 @@ export const getNote = (id: string): Note | undefined => state.notes.find((n) =>
 
 function saveFolders(folders: Folder[]): void {
   setState({ folders })
-  void window.cereal.folders.save(folders)
+  track(window.cereal.folders.save(folders))
 }
 
 export function createFolder(name: string): Folder {
@@ -193,7 +206,7 @@ export function saveChat(chat: Chat): void {
   setState((s) => ({
     chats: s.chats.some((c) => c.id === chat.id) ? s.chats.map((c) => (c.id === chat.id ? chat : c)) : [chat, ...s.chats]
   }))
-  void window.cereal.chats.save(chat)
+  track(window.cereal.chats.save(chat))
 }
 
 export function deleteChat(id: string): void {
@@ -201,5 +214,5 @@ export function deleteChat(id: string): void {
     chats: s.chats.filter((c) => c.id !== id),
     route: s.route.name === 'chat' && s.route.id === id ? { name: 'chats' } : s.route
   }))
-  void window.cereal.chats.remove(id)
+  track(window.cereal.chats.remove(id))
 }

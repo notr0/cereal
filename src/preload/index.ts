@@ -62,6 +62,16 @@ const api = {
       const handler = (_e: unknown, command: TrayCommand): void => cb(command)
       ipcRenderer.on('app:command', handler)
       return () => ipcRenderer.removeListener('app:command', handler)
+    },
+    /** Runs `finish` when Cereal is quitting; the app exits once it settles (or times out). */
+    onPrepareQuit(finish: () => Promise<void>): () => void {
+      const handler = (): void => {
+        void finish()
+          .catch(() => undefined)
+          .finally(() => ipcRenderer.send('app:readyToQuit'))
+      }
+      ipcRenderer.on('app:prepareQuit', handler)
+      return () => ipcRenderer.removeListener('app:prepareQuit', handler)
     }
   },
   openExternal: (url: string): void => ipcRenderer.send('app:openExternal', url)
