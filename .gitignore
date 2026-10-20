@@ -3,6 +3,8 @@ out/
 dist/
 # Copied from onnxruntime-web on every dev/build (scripts/copy-ort.mjs)
 src/renderer/public/ort/
+# Local reverse-engineering notes about Granola; never commit
+granola-re/
 *.log
 .env
 .env.*
