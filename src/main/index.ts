@@ -22,6 +22,8 @@ function createWindow(): BrowserWindow {
     backgroundColor: OVERLAY.light.color,
     titleBarStyle: 'hidden',
     titleBarOverlay: { ...OVERLAY.light, height: 44 },
+    // The packaged exe carries the icon itself; in dev, point the window at it.
+    ...(app.isPackaged ? {} : { icon: join(app.getAppPath(), 'build', 'icon.ico') }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

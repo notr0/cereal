@@ -47,9 +47,22 @@ npm run dev
 | `npm run build` | Build into `out/` |
 | `npm start` | Run the last build |
 | `npm run dist` | Package an unpacked Windows app into `dist/win-unpacked/Cereal.exe` |
+| `npm run shortcuts` | Add Cereal to the Start menu and desktop, pointing at that exe |
+| `npm run icon` | Regenerate `build/icon.ico` and `build/icon.png` from the SVGs in `build/` |
 
-Keep the project in a short path (for example `H:\cereal`). Chromium cannot load files whose full
+Keep the project in a short path (for example `J:\cereal`). Chromium cannot load files whose full
 path exceeds Windows' 260-character limit.
+
+## Install and launch
+
+```bash
+npm run dist
+npm run shortcuts
+```
+
+Then open **Cereal** from the Start menu or the desktop. The shortcuts point at
+`dist\win-unpacked\Cereal.exe`, so running `npm run dist` again updates the installed app in place.
+Close Cereal before rebuilding.
 
 ## Where data lives
 
