@@ -270,7 +270,7 @@ export function SettingsModal(): ReactNode {
               />
               <div className="help">
                 {s.llmProvider === 'claude'
-                  ? 'Notes, transcripts and questions are sent to Anthropic. Transcription still runs on this PC.'
+                  ? 'Notes, transcripts and questions are sent to Anthropic. Transcription uses the engine chosen below.'
                   : 'Everything stays on this PC, using the Ollama instance Odysseus runs.'}
               </div>
             </div>
@@ -301,7 +301,7 @@ export function SettingsModal(): ReactNode {
                     </option>
                   ))}
                 </select>
-                <div className="help">Runs on your GPU inside Cereal. Downloaded once from Hugging Face.</div>
+                <div className="help">Runs inside Cereal on your GPU, or on the CPU when there's no usable GPU. Downloaded once from Hugging Face.</div>
               </div>
             )}
             {s.sttProvider === 'odysseus' && (

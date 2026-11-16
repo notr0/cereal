@@ -4,9 +4,8 @@ type Asr = (audio: Float32Array, opts?: Record<string, unknown>) => Promise<{ te
 
 env.allowLocalModels = false
 
-let asr: Asr | null = null
-let loadedKey = ''
-let loading: Promise<Asr> | null = null
+/** The model that's loaded or loading. Kept as one pair so a model switch mid-load can't mix them up. */
+let current: { model: string; asr: Promise<Asr> } | null = null
 
 const post = (msg: unknown): void => (self as unknown as Worker).postMessage(msg)
 
@@ -49,14 +48,12 @@ async function create(model: string, device: 'webgpu' | 'wasm'): Promise<Asr> {
   })) as unknown as Asr
 }
 
-async function load(model: string, wasmBase: string): Promise<Asr> {
-  if (asr && loadedKey === model) return asr
-  if (loading && loadedKey === model) return loading
-  loadedKey = model
+function load(model: string, wasmBase: string): Promise<Asr> {
+  if (current?.model === model) return current.asr
   const onnx = env.backends.onnx as { wasm?: { wasmPaths?: string } }
   if (onnx.wasm) onnx.wasm.wasmPaths = wasmBase
   post({ type: 'status', status: 'Loading speech model…' })
-  loading = (async () => {
+  const asr = (async () => {
     if (await hasWebGpu()) {
       try {
         return await create(model, 'webgpu')
@@ -66,13 +63,21 @@ async function load(model: string, wasmBase: string): Promise<Asr> {
     }
     return create(model, 'wasm')
   })()
-  try {
-    asr = await loading
-    return asr
-  } finally {
-    loading = null
-    post({ type: 'status', status: null })
-  }
+  const entry = { model, asr }
+  current = entry
+  asr.then(
+    () => {
+      if (current === entry) post({ type: 'status', status: null })
+    },
+    () => {
+      // Forget a failed load so the next utterance tries again instead of reusing the failure.
+      if (current === entry) {
+        current = null
+        post({ type: 'status', status: null })
+      }
+    }
+  )
+  return asr
 }
 
 self.onmessage = async (e: MessageEvent) => {

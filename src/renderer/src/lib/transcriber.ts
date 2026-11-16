@@ -1,3 +1,4 @@
+import { joinAudio, takeBatch } from './batch'
 import { getState } from './state'
 import { encodeWav } from './util'
 
@@ -5,6 +6,16 @@ interface Pending {
   resolve: (text: string) => void
   reject: (e: Error) => void
 }
+
+interface Job extends Pending {
+  audio: Float32Array
+  key: string
+}
+
+const SAMPLE_RATE = 16000
+/** Whisper hears 30 s at a time; stay under that so a batch is never cut. */
+const MAX_BATCH_SAMPLES = 28 * SAMPLE_RATE
+const GAP_SAMPLES = 0.2 * SAMPLE_RATE
 
 const JUNK = new Set([
   'you',
@@ -32,7 +43,8 @@ class Transcriber {
   private worker: Worker | null = null
   private pending = new Map<number, Pending>()
   private nextId = 0
-  private queue: Promise<unknown> = Promise.resolve()
+  private jobs: Job[] = []
+  private busy = false
   onStatus: (status: string | null) => void = () => {}
 
   private wasmBase(): string {
@@ -74,12 +86,36 @@ class Transcriber {
     this.ensureWorker().postMessage({ type: 'load', model: s.whisperModel, wasmBase: this.wasmBase() })
   }
 
-  /** Transcriptions run one at a time, in order. */
-  transcribe(audio: Float32Array): Promise<string> {
-    const job = (): Promise<string> => this.run(audio)
-    const p = this.queue.then(job, job)
-    this.queue = p.catch(() => undefined)
-    return p
+  /**
+   * Transcriptions run one at a time, in order. When the engine falls behind (Whisper on CPU),
+   * the segments waiting from the same speaker go through as one call. Whisper pads every call
+   * to 30 s of audio, so a few short segments cost about the same as one, and the backlog drains.
+   * The first segment of a batch gets the text; the others resolve empty.
+   */
+  transcribe(audio: Float32Array, key = ''): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      this.jobs.push({ audio, key, resolve, reject })
+      void this.pump()
+    })
+  }
+
+  private async pump(): Promise<void> {
+    if (this.busy) return
+    this.busy = true
+    try {
+      while (this.jobs.length) {
+        const batch = takeBatch(this.jobs, MAX_BATCH_SAMPLES, GAP_SAMPLES)
+        try {
+          const text = await this.run(joinAudio(batch.map((j) => j.audio), GAP_SAMPLES))
+          batch.forEach((j, i) => j.resolve(i === 0 ? text : ''))
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e))
+          batch.forEach((j) => j.reject(err))
+        }
+      }
+    } finally {
+      this.busy = false
+    }
   }
 
   private run(audio: Float32Array): Promise<string> {
