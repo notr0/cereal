@@ -19,6 +19,8 @@ let quitting = false
 let finishing = false
 let readyToQuit = false
 let closeToTray = true
+/** What the UI last reported about recording, so a Windows shutdown knows whether there's audio to save. */
+let recording: TraySession['status'] = 'idle'
 
 // Long enough to transcribe the last few utterances on CPU, short enough that Quit never hangs.
 const FINISH_TIMEOUT_MS = 20_000
@@ -59,6 +61,22 @@ function createWindow(showOnReady: boolean): BrowserWindow {
   w.on('closed', () => {
     if (win === w) win = null
   })
+  // Cereal is a single page: a dropped file or a clicked link in an AI answer would otherwise
+  // replace the app. Web links open in the browser instead.
+  w.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault()
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+  })
+  // Windows is shutting down or logging off. Mid-recording, hold it up long enough to finish
+  // transcribing and save (Windows shows "Cereal is preventing shutdown" meanwhile); the quit
+  // path gives up after FINISH_TIMEOUT_MS, so this can't block shutdown for long.
+  w.on('query-session-end', (e) => {
+    if (recording === 'idle') return
+    e.preventDefault()
+    app.quit()
+  })
+  // Last call, which can't be held up: write what can be written.
+  w.on('session-end', () => app.quit())
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -145,7 +163,10 @@ function registerIpc(): void {
     tray?.refresh()
     return openAtLogin()
   })
-  ipcMain.on('app:session', (_e, s: TraySession) => tray?.setSession(s))
+  ipcMain.on('app:session', (_e, s: TraySession) => {
+    recording = s.status
+    tray?.setSession(s)
+  })
 
   ipcMain.on('window:theme', (e, dark: boolean) => {
     BrowserWindow.fromWebContents(e.sender)?.setTitleBarOverlay(dark ? OVERLAY.dark : OVERLAY.light)

@@ -79,7 +79,7 @@ async function onSegment(noteId: string, speaker: Speaker, audio: Float32Array):
   const seconds = audio.length / 16000
   set({ pending: snap.pending + 1 })
   try {
-    const text = cleanTranscript(await transcriber.transcribe(audio), seconds)
+    const text = cleanTranscript(await transcriber.transcribe(audio, speaker), seconds)
     const note = getNote(noteId)
     if (!text || !note) return
     if (speaker === 'me' && isEcho(note.transcript, 'me', text, at)) return

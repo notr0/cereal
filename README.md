@@ -48,6 +48,8 @@ npm run dev
 |---|---|
 | `npm run dev` | Run with hot reload |
 | `npm run build` | Build into `out/` |
+| `npm run typecheck` | Type-check everything with `tsc` |
+| `npm test` | Run the unit tests (Vitest; no Electron or Windows needed) |
 | `npm start` | Run the last build |
 | `npm run dist` | Package an unpacked Windows app into `dist/win-unpacked/Cereal.exe` |
 | `npm run shortcuts` | Add Cereal to the Start menu and desktop, pointing at that exe |

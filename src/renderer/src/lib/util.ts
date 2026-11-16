@@ -51,7 +51,8 @@ export function htmlToText(html: string): string {
           .join(' ')
           .trim()
         if (own) lines.push(`${'  '.repeat(Math.max(0, depth - 1))}- ${own}`)
-        walk(child, depth)
+        // Only nested lists: the item's own text (TipTap wraps it in <p>) is already on the line above.
+        for (const sub of Array.from(child.children)) if (/^(UL|OL)$/.test(sub.tagName)) walk(sub, depth + 1)
       } else if (/^H[1-6]$/.test(tag)) lines.push(`${'#'.repeat(Number(tag[1]))} ${child.textContent?.trim()}`)
       else if (tag === 'P' || tag === 'BLOCKQUOTE' || tag === 'PRE') {
         const t = child.textContent?.trim()

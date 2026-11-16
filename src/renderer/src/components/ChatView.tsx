@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft, ListTodo, MessageCircle, Trash2 } from 'lucide-react'
-import { stream } from '../lib/llm'
-import { globalChatMessages } from '../lib/prompts'
-import { contextTokens, deleteChat, getState, navigate, saveChat, useStore } from '../lib/state'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { ChevronLeft, ListTodo, MessageCircle, RotateCcw, Trash2, X } from 'lucide-react'
+import { answerIfNeeded, askFollowUp, removeChat, retry, stopAnswer, useChatRun } from '../lib/globalChat'
+import { navigate, useStore } from '../lib/state'
 import { dayLabel } from '../lib/util'
 import { Topbar } from './Common'
 import { AskBar, ChatThread } from './Dock'
@@ -10,6 +9,7 @@ import { NewNoteButton, startGlobalChat } from './Home'
 
 export function ChatList({ onNew }: { onNew: () => void }): ReactNode {
   const chats = useStore((s) => s.chats)
+  const claude = useStore((s) => s.settings.llmProvider === 'claude')
   const sorted = [...chats].sort((a, b) => b.updatedAt - a.updatedAt)
   return (
     <>
@@ -17,7 +17,10 @@ export function ChatList({ onNew }: { onNew: () => void }): ReactNode {
       <div className="scroll">
         <div className="column">
           <h1 className="page-title">Chat</h1>
-          <p style={{ color: 'var(--ink-2)', margin: '-8px 4px 16px' }}>Ask questions across all your meeting notes. Answers come from your local model.</p>
+          <p style={{ color: 'var(--ink-2)', margin: '-8px 4px 16px' }}>
+            Ask questions across all your meeting notes.{' '}
+            {claude ? 'Answers come from Claude, so your notes are sent to Anthropic.' : 'Answers come from your local model.'}
+          </p>
           {sorted.length === 0 && (
             <div className="empty">
               <div className="big">No chats yet</div>
@@ -37,7 +40,7 @@ export function ChatList({ onNew }: { onNew: () => void }): ReactNode {
                   </div>
                 </span>
               </button>
-              <button className="icon-btn" title="Delete chat" onClick={() => deleteChat(c.id)}>
+              <button className="icon-btn" title="Delete chat" onClick={() => removeChat(c.id)}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -57,34 +60,13 @@ export function ChatList({ onNew }: { onNew: () => void }): ReactNode {
 
 export function ChatView({ id, onNew }: { id: string; onNew: () => void }): ReactNode {
   const chat = useStore((s) => s.chats.find((c) => c.id === id))
-  const [answer, setAnswer] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const running = useRef(false)
+  const { answer, error } = useChatRun(id)
   const body = useRef<HTMLDivElement>(null)
 
-  // Answer whenever the thread ends with an unanswered question (including one started from Home).
+  // Answer a question that's still open, such as one just asked from Home. The answer itself lives
+  // outside this view, so leaving mid-answer and coming back doesn't ask the model a second time.
   useEffect(() => {
-    if (!chat || running.current) return
-    const last = chat.messages[chat.messages.length - 1]
-    if (!last || last.role !== 'user') return
-    running.current = true
-    setError(null)
-    setAnswer('')
-    const { notes, settings } = getState()
-    const past = chat.messages.slice(0, -1)
-    stream(
-      { messages: globalChatMessages(notes, past, last.content, settings.userName, contextTokens(settings)), purpose: 'chat' },
-      setAnswer
-    )
-      .promise.then((reply) => {
-        const fresh = getState().chats.find((c) => c.id === id)
-        if (fresh) saveChat({ ...fresh, updatedAt: Date.now(), messages: [...fresh.messages, { role: 'assistant', content: reply, at: Date.now() }] })
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => {
-        running.current = false
-        setAnswer(null)
-      })
+    if (chat) answerIfNeeded(id)
   }, [chat, id])
 
   useEffect(() => {
@@ -117,17 +99,22 @@ export function ChatView({ id, onNew }: { id: string; onNew: () => void }): Reac
             {chat.title}
           </h1>
           <ChatThread messages={chat.messages} streaming={answer} error={error} />
+          {error && (
+            <button className="chip ghost" style={{ marginTop: 8 }} onClick={() => retry(id)}>
+              <RotateCcw size={13} />
+              Try again
+            </button>
+          )}
         </div>
       </div>
       <div className="dock">
-        <AskBar
-          placeholder="Ask a follow-up"
-          busy={answer !== null}
-          autoFocus
-          onSubmit={(q) =>
-            saveChat({ ...chat, updatedAt: Date.now(), messages: [...chat.messages, { role: 'user', content: q, at: Date.now() }] })
-          }
-        />
+        {answer !== null && (
+          <button className="pill big generate" onClick={() => stopAnswer(id)}>
+            <X size={15} />
+            Stop answering
+          </button>
+        )}
+        <AskBar placeholder="Ask a follow-up" busy={answer !== null} autoFocus onSubmit={(q) => askFollowUp(id, q)} />
       </div>
     </>
   )
